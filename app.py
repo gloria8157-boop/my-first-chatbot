@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv() 
 
 # -------------------------------------------------------------
-# 0. UI 설정 및 CSS 주입 (디자인 코드)
+# 0. UI 설정 및 CSS 주입 (디자인 및 버튼 스타일)
 # -------------------------------------------------------------
 st.set_page_config(layout="wide") 
 
@@ -19,7 +19,7 @@ st.markdown("""
 .stApp {
     background-color: #f7f9fd; /* 연한 아이보리/하늘색 배경 */
     color: #1f1f1f;
-    font-family: 'Malgun Gothic', 'Nanum Gothic', sans-serif; 
+    font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; 
 }
 
 /* 제목 (h1) 스타일 */
@@ -27,12 +27,7 @@ h1 {
     color: #0078d4; /* 강조 파란색 */
     border-bottom: 3px solid #e0e0e0;
     padding-bottom: 10px;
-    margin-bottom: 30px; /* 제목 아래 여백 추가 */
-}
-
-/* 사용자 입력창 스타일 (선택적) */
-.st-emotion-cache-nahz7x {
-    padding-top: 10px;
+    margin-bottom: 30px; 
 }
 
 /* 챗봇 대화 영역 (AI 메시지) */
@@ -47,11 +42,32 @@ h1 {
     border-radius: 10px;
     padding: 10px;
 }
+
+/* 퀵팁 버튼 커스터마이징 (추가) */
+.quick-tip-container {
+    padding: 10px 0 20px 0;
+    border-bottom: 1px dashed #ccc;
+    margin-bottom: 20px;
+}
+.stButton>button {
+    background-color: #f0f0f5; /* 버튼 기본 배경 */
+    color: #333333;
+    border: 1px solid #dcdcdc;
+    border-radius: 20px;
+    padding: 5px 15px;
+    margin: 5px;
+    font-weight: 500;
+    transition: background-color 0.2s, transform 0.1s;
+}
+.stButton>button:hover {
+    background-color: #e2e8f0;
+    transform: translateY(-1px);
+}
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# 1. 설정 및 도구 함수 정의
+# 2. 설정 및 도구 함수 정의
 # -------------------------------------------------------------
 deployment_name = "gpt-4o-mini" # 사용하는 모델 배포명
 
@@ -87,15 +103,14 @@ tools_definitions = [
     }
 ]
 
-# 실제 Python 함수와 도구 이름을 매핑
 available_functions = {
     "get_tax_tip_for_category": get_tax_tip_for_category,
 }
 
 # -------------------------------------------------------------
-# 4. Streamlit UI 및 클라이언트 설정
+# 3. Streamlit UI 및 클라이언트 설정
 # -------------------------------------------------------------
-st.title("💰 연말정산 공제 팁 챗봇")
+st.title("💰 연말정산 공제 팁 챗봇 (텍스트 전용)")
 
 client = AzureOpenAI(
     api_key=os.getenv("AZURE_OAI_KEY"),
@@ -121,9 +136,47 @@ SYSTEM_PROMPT = """당신은 '연말정산 절세 코치'입니다. 당신의 �
 
 
 # -------------------------------------------------------------
-# 5. 사용자 입력 처리 및 API 호출
+# 4. 퀵팁 버튼 UI 생성 및 처리 로직 (새로 추가된 부분)
 # -------------------------------------------------------------
-if prompt := st.chat_input("무엇을 도와드릴까요? (예: 의료비 공제 팁 알려줘)"):
+
+# Quick Tip 버튼에 대한 쿼리 정의
+QUICK_TIPS = {
+    "의료비 공제 팁": "의료비 공제를 최대한 많이 받는 방법이 궁금해",
+    "교육비 공제 요건": "자녀 교육비 공제는 어디까지 받을 수 있어?",
+    "연금저축 팁": "연금저축 공제 한도와 팁을 알려줘",
+    "주택자금 팁": "무주택자 주택자금 공제는 어떻게 해야 해?"
+}
+
+st.markdown('<div class="quick-tip-container">', unsafe_allow_html=True)
+st.markdown("##### 💡 자주 찾는 공제 팁")
+
+cols = st.columns(len(QUICK_TIPS))
+
+# 버튼을 누르면 해당 질문을 session_state에 저장하고 앱을 재실행합니다.
+for i, (label, query) in enumerate(QUICK_TIPS.items()):
+    with cols[i]:
+        if st.button(label, key=f"tip_button_{i}"):
+            st.session_state.button_prompt = query
+            st.rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# -------------------------------------------------------------
+# 5. 사용자 입력 처리 및 API 호출 (버튼 클릭 처리 포함)
+# -------------------------------------------------------------
+
+# 버튼이 눌렸다면, 해당 쿼리를 prompt로 사용합니다.
+if "button_prompt" in st.session_state and st.session_state.button_prompt:
+    prompt = st.session_state.button_prompt
+    # 버튼 prompt를 사용한 후 세션 상태에서 지웁니다.
+    st.session_state.button_prompt = ""
+else:
+    # 일반 채팅 입력으로 넘어갑니다.
+    prompt = st.chat_input("무엇을 도와드릴까요? (예: 의료비 공제 팁 알려줘)")
+
+
+# API 호출 로직은 prompt가 있을 때만 실행됩니다.
+if prompt:
     
     # 1. 사용자 메시지 화면 표시 및 세션 저장
     with st.chat_message("user"):
@@ -139,7 +192,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요? (예: 의료비 공제
         # 시스템 메시지 추가
         messages_for_completion = [{"role": "system", "content": SYSTEM_PROMPT}]
         
-        # 기존 세션 기록 추가 (텍스트만 포함)
+        # 기존 세션 기록 추가
         messages_for_completion.extend(st.session_state.messages)
         
         # -------------------------------------------------------------------
@@ -187,4 +240,3 @@ if prompt := st.chat_input("무엇을 도와드릴까요? (예: 의료비 공제
         # 4. AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
-
