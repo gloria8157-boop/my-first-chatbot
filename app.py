@@ -11,7 +11,7 @@ load_dotenv()
 # -------------------------------------------------------------
 # 0. UI 설정 및 CSS 주입 (디자인 및 버튼 스타일)
 # -------------------------------------------------------------
-st.set_page_config
+st.set_page_config()
 
 st.markdown("""
 <style>
@@ -287,5 +287,6 @@ if final_prompt:
         # 4. AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
 
