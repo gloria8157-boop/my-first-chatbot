@@ -18,7 +18,7 @@ deployment_name = "gpt-4o-mini" # 채팅 모델 이름 (Assistant와는 별개�
 client = AzureOpenAI(
     azure_endpoint = os.getenv("AZURE_OAI_ENDPOINT"),
     api_key= os.getenv("AZURE_OAI_KEY"),
-    api_version="2025-01-01-preview" # Assistant API는 2024-05-01-preview 버전 이상이 필요
+    api_version="2024-02-15-preview" # Assistant API는 2024-05-01-preview 버전 이상이 필요
 )
 
 # Assistant ID와 Vector Store ID는 한번 생성되면 변경되지 않습니다.
@@ -134,4 +134,5 @@ if prompt := st.chat_input("서류 분석을 요청하거나 질문하세요."):
         # 5. AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
