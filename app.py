@@ -54,7 +54,7 @@ available_functions = {
 # -------------------------------------------------------------
 # 3. Streamlit UI 및 클라이언트 설정
 # -------------------------------------------------------------
-st.title("💰 연말정산 공제 팁 챗봇 (텍스트 전용)")
+st.title("💰 연말정산 공제 팁 챗봇")
 
 client = AzureOpenAI(
     api_key=os.getenv("AZURE_OAI_KEY"),
@@ -152,3 +152,4 @@ if prompt := st.chat_input("무엇을 도와드릴까요? (예: 의료비 공제
         # 4. AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
