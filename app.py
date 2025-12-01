@@ -105,22 +105,21 @@ SYSTEM_PROMPT = """당신은 '연말정산 절세 코치'입니다. 당신의 �
 # -------------------------------------------------------------
 if prompt := st.chat_input("무엇을 도와드릴까요?"):
     
-    # 1. 현재 사용자 메시지 구성 (UI 표시 및 API 전송용)
+    # 1. 현재 사용자 메시지 구성 (API 전송용)
     with st.chat_message("user"):
-        # UI에 텍스트 표시
         st.markdown(prompt)
         
-        # API 전송용 멀티모달 메시지 리스트 생성
-        current_api_user_content = []
+        # API 전송용 멀티모달 메시지 리스트 생성: 항상 리스트로 시작합니다.
+        current_api_user_content = [] 
         
         # 파일 첨부 처리 및 Base64 인코딩
         if uploaded_file is not None:
             try:
-                # ... (중략: 파일 처리 로직) ...
                 file_bytes = uploaded_file.read()
                 encoded_file = base64.b64encode(file_bytes).decode('utf-8')
                 mime_type = uploaded_file.type 
                 
+                # 파일 데이터를 API 요청 리스트에 추가
                 current_api_user_content.append({
                     "type": "image_url",
                     "image_url": {
@@ -131,10 +130,10 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
                 st.info(f"첨부된 파일({uploaded_file.name}, 타입: {mime_type})을 분석 요청에 포함했습니다.")
                 
             except Exception as e:
-                st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
-                current_api_user_content = []
+                # 파일 오류 시, current_api_user_content는 [] 빈 리스트로 유지됨
+                st.error(f"파일 처리 중 오류가 발생했습니다: {e}") 
 
-        # 텍스트 프롬프트를 API 요청 리스트에 추가
+        # 텍스트 프롬프트를 API 요청 리스트에 추가 (파일이 없어도 텍스트는 전달됨)
         current_api_user_content.append({"type": "text", "text": prompt})
         
     # **오류 방지 핵심:** 세션 상태에는 순수한 텍스트 문자열만 저장
@@ -150,9 +149,9 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # 시스템 메시지 추가
         messages_for_completion = [{"role": "system", "content": SYSTEM_PROMPT}]
         
-        # 기존 세션 기록 추가 (텍스트 메시지 히스토리)
+        # 기존 세션 기록 추가 (여기가 핵심: 과거 메시지는 무조건 문자열 콘텐츠로 처리)
         messages_for_completion.extend([
-            {"role": m["role"], "content": m["content"]}
+            {"role": m["role"], "content": str(m["content"])} # <-- str() 강제 변환
             for m in st.session_state.messages[:-1] 
         ])
         
@@ -161,7 +160,6 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
             "role": "user",
             "content": current_api_user_content
         })
-
 
         # -------------------------------------------------------------------
         # 3. API 호출 및 도구 사용 로직 (Line 170이 여기서 시작됩니다.)
@@ -208,5 +206,6 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # (4) AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
 
