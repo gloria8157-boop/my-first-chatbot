@@ -10,7 +10,21 @@ import warnings
 # 1. 환경 변수 로드 (.env 파일이 같은 폴더에 있어야 함)
 load_dotenv()
 
-
+def get_tax_tip_for_category(category):
+    tips = {
+        "insurance": "보장성 보험료는 연 100만 원 한도로 12% 세액 공제됩니다. 맞벌이 부부의 경우, 급여가 적은 배우자 명의로 계약하는 것이 유리할 수 있습니다.",
+        "medical": "총 급여액의 3%를 초과하는 금액에 대해 공제됩니다. 특히 산후조리원 비용(200만 원 한도)과 난임 시술비는 공제율이 높으니 관련 영수증을 잘 챙기세요.",
+        "education": "본인 교육비는 전액 공제되며, 자녀 교육비는 1인당 한도가 있습니다. 취학 전 아동의 학원비는 공제가능하나, 초/중/고교 학원비는 공제 대상이 아닙니다.",
+        "housing": "주택 마련 저축(청약 저축 등)은 연 240만 원 한도로 공제됩니다. 무주택 세대주 여부를 반드시 확인해야 합니다.",
+        "pension": "연금저축 및 퇴직연금은 세액 공제율이 높습니다. 총 급여액에 따라 공제 한도와 공제율이 달라지니 최대한 활용하는 것이 좋습니다."
+    }
+    
+    selected_tip = tips.get(category.lower(), "해당 공제 항목에 대한 일반적인 절세 팁을 찾을 수 없습니다. (카테고리: " + category + ")")
+    
+    return json.dumps({
+        "category": category,
+        "tip": selected_tip
+    })
 
 OPENWEATHER_API_KEY = "586cc15ec5c2aabe7f9cd119ed9ca9e4"
 deployment_name = "gpt-4o-mini" # 사용하는 모델 배포명
@@ -95,18 +109,33 @@ tools_definitions = [
                 "required": ["location"],
             },
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_tax_tip_for_category",
+            "description": "사용자가 질문한 연말정산 공제 항목(예: 보험료, 의료비, 교육비 등)에 대한 구체적인 절세 팁과 공제 요건을 조회합니다. 카테고리는 반드시 영어로 변환하여 사용해야 합니다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string", "description": "The tax deduction category (e.g., 'insurance', 'medical', 'education', 'housing', 'pension')."},
+                },
+                "required": ["category"],
+            },
+        }
     }
 ]
 
 # 도구 이름과 실제 Python 함수를 매핑
 available_functions = {
     "get_current_weather": get_current_weather,
-    "get_current_time": get_current_time
+    "get_current_time": get_current_time,
+    "get_tax_tip_for_category": get_tax_tip_for_category
 }
 
 # 2. Azure OpenAI 클라이언트 설정
 # (실제 값은 .env 파일이나 여기에 직접 입력하세요)
-st.title("🤖 실시간 날씨 & 시간 챗봇")
+st.title("💰 연말정산 공제 팁 챗봇")
 
 client = AzureOpenAI(
     api_key=os.getenv("AZURE_OAI_KEY"),
@@ -135,10 +164,19 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         placeholder = st.empty()
 
         # Streamlit 세션 기록을 기반으로 메시지 리스트 생성 (시스템 지침 포함)
-        messages_for_completion = [
-            {"role": m["role"], "content": m["content"]}
-            for m in st.session_state.messages
-        ]
+       messages_for_completion = [{
+            "role": "system",
+            "content": """당신은 '연말정산 절세 코치'라는 이름의 챗봇입니다. 당신의 목표는 사용자가 합법적으로 세액 공제나 소득 공제를 최대한 많이 받을 수 있도록 구체적이고 실용적인 팁과 요건을 안내하는 것입니다.
+
+1.  **역할:** 연말정산 항목(의료비, 보험료, 교육비, 주택자금 등)과 관련된 질문에 답변하고, 공제를 더 받을 수 있는 방법을 상세히 설명합니다.
+2.  **태도:** 친절하고 전문적인 존댓말을 사용하며, 복잡한 세법 내용을 이해하기 쉽게 풀어서 설명합니다.
+3.  **도구 사용:** 사용자가 특정 공제 항목에 대해 질문하면 'get_tax_tip_for_category' 도구를 호출하여 맞춤형 팁을 조회한 후, 이를 바탕으로 상세한 답변을 구성합니다.
+4.  **제한:** 최종적인 세무 신고는 세무사 또는 국세청 자료를 통해 확인하도록 반드시 권고합니다.
+"""
+        }] + [
+            {"role": m["role"], "content": m["content"]}
+            for m in st.session_state.messages
+        ]
 
         response = client.chat.completions.create(
                 model=deployment_name, 
@@ -184,6 +222,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # (3) AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
 
 
