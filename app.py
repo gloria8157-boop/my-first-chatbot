@@ -12,7 +12,7 @@ load_dotenv()
 
 
 
-OPENWEATHER_API_KEY = "8538da5f00be6a0906782d7ea86c56aa"
+OPENWEATHER_API_KEY = "586cc15ec5c2aabe7f9cd119ed9ca9e4"
 deployment_name = "gpt-4o-mini" # 사용하는 모델 배포명
 
 def get_location_data(location):
@@ -184,6 +184,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # (3) AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
 
 
