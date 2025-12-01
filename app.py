@@ -99,36 +99,36 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
     # -------------------------------------------------------------------
     with st.chat_message("user"):
         # UI에 텍스트 표시
-        st.markdown(prompt)
+         st.markdown(prompt)
         
         # API 전송용 멀티모달 메시지 리스트 생성 (BadRequestError 방지 핵심)
-        current_api_user_content = []
+         current_api_user_content = []
         
         # 파일 첨부 처리 및 Base64 인코딩
-        if uploaded_file is not None:
-            try:
-                file_bytes = uploaded_file.read()
-                encoded_file = base64.b64encode(file_bytes).decode('utf-8')
-                mime_type = uploaded_file.type 
+         if uploaded_file is not None:
+             try:
+                 file_bytes = uploaded_file.read()
+                 encoded_file = base64.b64encode(file_bytes).decode('utf-8')
+                 mime_type = uploaded_file.type 
                 
                 # 파일 데이터를 API 요청 리스트에 추가
-                current_api_user_content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{mime_type};base64,{encoded_file}",
-                        "detail": "high"
-                    }
-                })
+                 current_api_user_content.append({
+                     "type": "image_url",
+                     "image_url": {
+                         "url": f"data:{mime_type};base64,{encoded_file}",
+                         "detail": "high"
+                     }
+                 })
                 
-                st.info(f"첨부된 파일({uploaded_file.name}, 타입: {mime_type})을 분석 요청에 포함했습니다.")
+                 st.info(f"첨부된 파일({uploaded_file.name}, 타입: {mime_type})을 분석 요청에 포함했습니다.")
                 
-            except Exception as e:
-                st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+             except Exception as e:
+                 st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
                 # 오류 발생 시 파일 없이 텍스트만 보내도록 처리
-                current_api_user_content = []
+                 current_api_user_content = []
 
         # 텍스트 프롬프트를 API 요청 리스트에 추가
-        current_api_user_content.append({"type": "text", "text": prompt})
+         current_api_user_content.append({"type": "text", "text": prompt})
         
     # -------------------------------------------------------------------
     # 2. API 요청 메시지 리스트 구성
@@ -200,6 +200,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # (4) AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
 
 
