@@ -164,7 +164,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         placeholder = st.empty()
 
         # Streamlit 세션 기록을 기반으로 메시지 리스트 생성 (시스템 지침 포함)
-       messages_for_completion = [{
+        messages_for_completion = [{
             "role": "system",
             "content": """당신은 '연말정산 절세 코치'라는 이름의 챗봇입니다. 당신의 목표는 사용자가 합법적으로 세액 공제나 소득 공제를 최대한 많이 받을 수 있도록 구체적이고 실용적인 팁과 요건을 안내하는 것입니다.
 
@@ -222,6 +222,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # (3) AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
 
 
