@@ -49,60 +49,7 @@ def get_current_weather(location, unit="celsius"):
     return json.dumps({"location": location, "temperature": "unknown"})
 
 def get_current_time(location):
-    """실제 API의 Timezone offset을 이용하여 현지 시간 계산"""
-    data = get_location_data(location)
-    if data and "error" not in data:
-        timezone_offset = data["timezone"]
-        utc_now = datetime.now(timezone.utc)
-        local_time = utc_now + timedelta(seconds=timezone_offset)
-
-        return json.dumps({
-            "location": location,
-            "current_time": local_time.strftime("%Y-%m-%d %I:%M %p")
-        })
-    return json.dumps({"location": location, "current_time": "unknown"})
-
-tools_definitions = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_current_weather",
-            "description": "지역의 현재 날씨(온도, 상태)를 조회합니다. 도시 이름은 반드시 영어로 변환하여 사용하세요.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {"type": "string", "description": "The city name, e.g. Seoul or Tokyo."},
-                    "unit": {"type": "string", "enum": ["celsius", "fahrenheit"], "description": "Temperature unit."},
-                },
-                "required": ["location"],
-            },
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_current_time",
-            "description": "지역의 현재 현지 시간을 조회합니다. 도시 이름은 반드시 영어로 변환하여 사용하세요.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {"type": "string", "description": "The city name, e.g. Seoul or Tokyo."},
-                },
-                "required": ["location"],
-            },
-        }
-    }
-]
-
-# 도구 이름과 실제 Python 함수를 매핑
-available_functions = {
-    "get_current_weather": get_current_weather,
-    "get_current_time": get_current_time
-}
-
-# 2. Azure OpenAI 클라이언트 설정
-# (실제 값은 .env 파일이나 여기에 직접 입력하세요)
-st.title("🤖 실시간 날씨 & 시간 챗봇")
+    """실제 AP첫 챗봇")
 
 client = AzureOpenAI(
     api_key=os.getenv("AZURE_OAI_KEY"),
@@ -180,3 +127,4 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # (3) AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
