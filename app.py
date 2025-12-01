@@ -1,76 +1,154 @@
+import streamlit as st
 import os
 import json
-import requests
-import time
+import time # Streamlit에서는 비동기 처리를 위해 필요
 from openai import AzureOpenAI
 from dotenv import load_dotenv
 
-load_dotenv()
+# 1. 환경 변수 로드 (.env 파일이 같은 폴더에 있어야 함)
+load_dotenv() 
+
+# -------------------------------------------------------------
+# 2. 설정 및 도구 함수 정의
+# -------------------------------------------------------------
+deployment_name = "gpt-4o-mini" # 사용하는 모델 배포명
+
+def get_tax_tip_for_category(category):
+    """주요 연말정산 공제 항목에 대한 절세 팁을 제공하는 헬퍼 함수"""
+    # 헬퍼 함수는 실제로 데이터를 조회하는 대신, 예시 답변을 제공합니다.
+    tips = {
+        "insurance": "보장성 보험료는 연 100만 원 한도로 12% 세액 공제됩니다. 맞벌이 부부의 경우, 급여가 적은 배우자 명의로 계약하는 것이 유리할 수 있습니다.",
+        "medical": "총 급여액의 3%를 초과하는 금액에 대해 공제됩니다. 특히 산후조리원 비용(200만 원 한도)과 난임 시술비는 공제율이 높으니 관련 영수증을 잘 챙기세요.",
+        "education": "본인 교육비는 전액 공제되며, 자녀 교육비는 1인당 한도가 있습니다. 취학 전 아동의 학원비는 공제가능하나, 초/중/고교 학원비는 공제 대상이 아닙니다.",
+        "housing": "주택 마련 저축(청약 저축 등)은 연 240만 원 한도로 공제됩니다. 무주택 세대주 여부를 반드시 확인해야 합니다.",
+        "pension": "연금저축 및 퇴직연금은 세액 공제율이 높습니다. 총 급여액에 따라 공제 한도와 공제율이 달라지니 최대한 활용하는 것이 좋습니다.",
+        "donation": "기부금은 소득금액의 일정 비율을 한도로 공제됩니다. 특히 고액 기부금(1천만 원 초과분)은 공제율이 높으니, 관련 서류를 잘 보관해야 합니다."
+    }
+    selected_tip = tips.get(category.lower(), "해당 공제 항목에 대한 일반적인 절세 팁을 찾을 수 없습니다. (카테고리: " + category + ")")
+    return json.dumps({"category": category, "tip": selected_tip})
+
+
+# 모델이 사용할 수 있는 도구 정의 (함수 호출 정의)
+tools_definitions = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_tax_tip_for_category",
+            "description": "사용자가 질문한 연말정산 공제 항목(예: 보험료, 의료비, 교육비, 기부금 등)에 대한 구체적인 절세 팁과 공제 요건을 조회합니다. 카테고리는 반드시 영어로 변환하여 사용하세요.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {"type": "string", "description": "The tax deduction category (e.g., 'insurance', 'medical', 'education', 'housing', 'pension', 'donation')."},
+                },
+                "required": ["category"],
+            },
+        }
+    }
+]
+
+# 실제 Python 함수와 도구 이름을 매핑
+available_functions = {
+    "get_tax_tip_for_category": get_tax_tip_for_category,
+}
+
+# -------------------------------------------------------------
+# 3. Streamlit UI 및 클라이언트 설정
+# -------------------------------------------------------------
+st.title("💰 연말정산 공제 팁 챗봇 (텍스트 전용)")
 
 client = AzureOpenAI(
-  azure_endpoint = os.getenv("AZURE_OAI_ENDPOINT"),
-  api_key= os.getenv("AZURE_OAI_KEY"),
-  api_version="2024-05-01-preview"
-)
-# 로컬 파일을 임시 벡터 스토리지로 옮기는 거(실제 벡터 저장소에 하는것과 도우미 첨부파일 올리는 것과 다름 -> 도우미 첨부파일 올리는 건 단발성)->지금은 단발성으로 올리는 임시임
-
-#1. 로컬에 있는 파일을 읽어와서 임시 벡터저장소로 보내는 코드
-file_path = r"C:\Users\EL94\Downloads\이예진의 AI School 파일\25.11.25 (클라우드openAI)\openai\09 AzureOpenAI 2 챗봇-매개변수_v11.pdf"
-
-message_file = client.files.create(
-    file=open(file_path, 'rb'),
-    purpose='assistants'
+    api_key=os.getenv("AZURE_OAI_KEY"),
+    api_version="2024-05-01-preview", # 최신 Chat Completion API 버전 사용
+    azure_endpoint=os.getenv("AZURE_OAI_ENDPOINT")
 )
 
-assistant = client.beta.assistants.create(
-  model="gpt-4o-mini", # replace with model deployment name.
-  instructions="",
-  tools=[{"type":"file_search"}],
-  temperature=1,
-  top_p=1
-)
+# 대화기록(Session State) 초기화
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# Create a thread
-thread = client.beta.threads.create()
+# 화면에 기존 대화 내용 출력
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-# Add a user question to the thread
-message = client.beta.threads.messages.create(
-  thread_id=thread.id,
-  role="user",
-  content="파일 내용 요약해줘", # Replace this with your prompt
-  #2. 파일 첨부에 대한 설정 추가
-  attachments=[
-    {
-        "file_id" :message_file.id,
-        "tools": [{"type":"file_search"}]
-    }
-  ]
-)
+# 시스템 프롬프트 정의
+SYSTEM_PROMPT = """당신은 '연말정산 절세 코치'입니다. 당신의 목표는 사용자가 합법적으로 세액 공제나 소득 공제를 최대한 많이 받을 수 있도록 구체적이고 실용적인 팁과 요건을 안내하는 것입니다.
+
+1.  **역할:** 연말정산 항목(의료비, 보험료, 교육비, 주택자금 등)과 관련된 질문에 답변하고, 공제를 더 받을 수 있는 방법을 상세히 설명합니다.
+2.  **도구 사용:** 특정 공제 항목에 대한 질문이나 답변을 보강할 때 'get_tax_tip_for_category' 도구를 호출하여 맞춤형 팁을 조회합니다.
+3.  **태도:** 친절하고 전문적인 존댓말을 사용하며, 복잡한 세법 내용을 이해하기 쉽게 풀어서 설명합니다.
+4.  **제한:** 최종적인 세무 신고는 세무사 또는 국세청 자료를 통해 확인하도록 반드시 권고합니다."""
 
 
+# -------------------------------------------------------------
+# 4. 사용자 입력 처리 및 API 호출 (텍스트 전용 로직)
+# -------------------------------------------------------------
+if prompt := st.chat_input("무엇을 도와드릴까요? (예: 의료비 공제 팁 알려줘)"):
+    
+    # 1. 사용자 메시지 화면 표시 및 세션 저장
+    with st.chat_message("user"):
+        st.markdown(prompt)
+        
+    st.session_state.messages.append({"role": "user", "content": prompt})
 
-# Run the thread
-run = client.beta.threads.runs.create(
-  thread_id=thread.id,
-  assistant_id=assistant.id
-)
 
-# Looping until the run completes or fails
-while run.status in ['queued', 'in_progress', 'cancelling']:
-  time.sleep(1)
-  run = client.beta.threads.runs.retrieve(
-    thread_id=thread.id,
-    run_id=run.id
-  )
+    # 2. API 요청 메시지 리스트 구성
+    with st.chat_message("assistant"):
+        placeholder = st.empty()
 
-if run.status == 'completed':
-  messages = client.beta.threads.messages.list(
-    thread_id=thread.id
-  )
-  print(messages.data[0].content[0].text.value)
-elif run.status == 'requires_action':
-  # the assistant requires calling some functions
-  # and submit the tool outputs back to the run
-  pass
-else:
-  print(run.status)
+        # 시스템 메시지 추가
+        messages_for_completion = [{"role": "system", "content": SYSTEM_PROMPT}]
+        
+        # 기존 세션 기록 추가
+        messages_for_completion.extend(st.session_state.messages)
+        
+        # -------------------------------------------------------------------
+        # 3. API 호출 및 도구 사용 로직
+        # -------------------------------------------------------------------
+        response = client.chat.completions.create( 
+            model=deployment_name, 
+            messages=messages_for_completion,
+            tools=tools_definitions,
+            tool_choice="auto",
+        )
+        
+        response_message = response.choices[0].message
+        assistant_reply = ""
+
+        # 도구 호출이 필요한 경우 (1차 호출)
+        if response_message.tool_calls:
+            
+            # 모델의 도구 호출 요청 메시지 추가
+            messages_for_completion.append(response_message)
+            
+            for tool_call in response_message.tool_calls:
+                function_name = tool_call.function.name
+                # json.loads 대신 .model_dump_json()을 사용하거나, .arguments를 직접 파싱
+                # 여기서는 json.loads를 사용하여 파싱
+                function_args = json.loads(tool_call.function.arguments)
+
+                # 실제 Python 함수 실행
+                function_response = available_functions[function_name](**function_args)
+
+                # 함수 실행 결과 메시지 추가
+                messages_for_completion.append({
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "name": function_name,
+                    "content": function_response,
+                })
+            
+            # 2차 호출: 도구 결과를 바탕으로 최종 답변 생성
+            final_response = client.chat.completions.create(
+                model=deployment_name,
+                messages=messages_for_completion,
+            )
+            assistant_reply = final_response.choices[0].message.content
+
+        # 도구 호출이 필요 없거나 2차 호출 결과가 나온 경우
+        else:
+            assistant_reply = response_message.content
+
+        # 4. AI 응답 화면에 출력 및 저장
+        placeholder.markdown(assistant_reply)
+        st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
