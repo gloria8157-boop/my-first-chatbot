@@ -17,14 +17,14 @@ st.markdown("""
 <style>
 /* 폰트 및 앱 배경색 설정 */
 .stApp {
-    background-color: #f7f9fd; /* 연한 아이보리/하늘색 배경 */
+    background-color: #f7f9fd;
     color: #1f1f1f;
     font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif; 
 }
 
 /* 제목 (h1) 스타일 */
 h1 {
-    color: #0078d4; /* 강조 파란색 */
+    color: #0078d4;
     border-bottom: 3px solid #e0e0e0;
     padding-bottom: 10px;
     margin-bottom: 30px; 
@@ -32,25 +32,25 @@ h1 {
 
 /* 챗봇 대화 영역 (AI 메시지) */
 .st-emotion-cache-1c7c943 {
-    background-color: #e6f7ff; /* 연한 파란색 배경 */
+    background-color: #e6f7ff;
     border-radius: 10px;
     padding: 10px;
 }
 /* 사용자 메시지 */
 .st-emotion-cache-1r65hfr {
-    background-color: #ffffff; /* 흰색 배경 */
+    background-color: #ffffff;
     border-radius: 10px;
     padding: 10px;
 }
 
-/* 퀵팁 버튼 커스터마이징 (추가) */
+/* 퀵팁 버튼 커스터마이징 */
 .quick-tip-container {
     padding: 10px 0 20px 0;
     border-bottom: 1px dashed #ccc;
     margin-bottom: 20px;
 }
 .stButton>button {
-    background-color: #f0f0f5; /* 버튼 기본 배경 */
+    background-color: #f0f0f5; 
     color: #333333;
     border: 1px solid #dcdcdc;
     border-radius: 20px;
@@ -85,6 +85,29 @@ def get_tax_tip_for_category(category):
     return json.dumps({"category": category, "tip": selected_tip})
 
 
+def check_eligibility(deduction_type, annual_income_krw):
+    """
+    특정 공제 항목에 대한 소득 기준 충족 여부를 판단하는 함수.
+    이 함수는 모델에게 공제 가능/불가능에 대한 판단 근거를 제공합니다.
+    (실제 세법은 복잡하나, 단순화된 기준을 사용합니다.)
+    """
+    income = float(annual_income_krw) / 10000000 # 억 단위로 변환
+    
+    if deduction_type.lower() == "주택자금" or deduction_type.lower() == "housing":
+        # 주택자금 관련 공제는 보통 총 급여액 7천만 원 (7억 원) 이하를 기준으로 함
+        if income <= 7.0:
+            return json.dumps({"status": "가능", "reason": "총 급여액 기준 7천만 원 이하로 주택자금 공제의 기본 소득 요건을 충족합니다. (단, 무주택 세대주 요건 등 추가 확인 필요)"})
+        else:
+            return json.dumps({"status": "불가", "reason": "총 급여액이 7천만 원을 초과하여 일부 주택자금 관련 공제(예: 주택청약종합저축)는 제한될 수 있습니다."})
+    
+    elif deduction_type.lower() == "신용카드" or deduction_type.lower() == "creditcard":
+        # 신용카드 공제는 소득 제한은 없으나, 총 급여액의 25% 초과분에 대해서만 공제됩니다.
+        return json.dumps({"status": "정보필요", "reason": "신용카드 공제는 소득 제한이 아닌, 총 급여액의 25% 초과 지출액에 대해 적용됩니다. 초과 지출액 정보를 알려주세요."})
+
+    else:
+        return json.dumps({"status": "알 수 없음", "reason": "해당 공제 항목에 대한 명확한 소득 기준 정보를 찾을 수 없습니다. 일반적인 공제 팁을 확인해 보세요."})
+
+
 # 모델이 사용할 수 있는 도구 정의
 tools_definitions = [
     {
@@ -100,17 +123,34 @@ tools_definitions = [
                 "required": ["category"],
             },
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_eligibility",
+            "description": "특정 공제 항목(예: 주택자금, 신용카드)의 기본 소득 기준 충족 여부를 판단합니다. 공제 유형(한글 또는 영어)과 연간 소득(KRW)을 입력받아 결과를 제공합니다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "deduction_type": {"type": "string", "description": "The type of deduction (e.g., '주택자금', '신용카드', 'housing')."},
+                    "annual_income_krw": {"type": "number", "description": "User's annual income in Korean Won (KRW)."},
+                },
+                "required": ["deduction_type", "annual_income_krw"],
+            },
+        }
     }
 ]
 
+# 실제 Python 함수와 도구 이름을 매핑
 available_functions = {
     "get_tax_tip_for_category": get_tax_tip_for_category,
+    "check_eligibility": check_eligibility, # 새 함수 추가
 }
 
 # -------------------------------------------------------------
 # 3. Streamlit UI 및 클라이언트 설정
 # -------------------------------------------------------------
-st.title("💰 연말정산 공제 팁 챗봇")
+st.title("💰 연말정산 공제 팁 챗봇 (텍스트 전용)")
 
 client = AzureOpenAI(
     api_key=os.getenv("AZURE_OAI_KEY"),
@@ -121,6 +161,12 @@ client = AzureOpenAI(
 # 대화기록(Session State) 초기화
 if "messages" not in st.session_state:
     st.session_state.messages = []
+    # 챗봇 시작 시 초기 메시지 추가 (UX 개선)
+    st.session_state.messages.append({
+        "role": "assistant", 
+        "content": "안녕하세요, 저는 **연말정산 절세 코치**입니다. 궁금한 공제 항목을 질문해 주시면, 소득공제 및 세액공제 팁을 자세히 안내해 드리겠습니다! 하단의 팁 버튼을 이용하거나, '제 연봉이 5000만원인데 주택자금 공제가 가능한가요?'처럼 구체적으로 질문해 보세요."
+    })
+
 
 # 화면에 기존 대화 내용 출력
 for message in st.session_state.messages:
@@ -129,8 +175,9 @@ for message in st.session_state.messages:
 
 # 시스템 프롬프트 정의
 SYSTEM_PROMPT = """당신은 '연말정산 절세 코치'입니다. 당신의 목표는 사용자가 합법적으로 세액 공제나 소득 공제를 최대한 많이 받을 수 있도록 구체적이고 실용적인 팁과 요건을 안내하는 것입니다.
-1.  **역할:** 연말정산 항목(의료비, 보험료, 교육비, 주택자금 등)과 관련된 질문에 답변하고, 공제를 더 받을 수 있는 방법을 상세히 설명합니다.
-2.  **도구 사용:** 특정 공제 항목에 대한 질문이나 답변을 보강할 때 'get_tax_tip_for_category' 도구를 호출하여 맞춤형 팁을 조회합니다.
+
+1.  **역할:** 연말정산 항목(의료비, 보험료, 주택자금 등)과 관련된 질문에 답변하고, 공제를 더 받을 수 있는 방법을 상세히 설명합니다.
+2.  **도구 사용:** 질문에 명확한 공제 항목이나 소득 정보가 포함된 경우(예: '주택자금 공제 팁 알려줘', '연봉이 6천만원인데 주택자금 공제가 되나요?'), 적절한 도구(get_tax_tip_for_category 또는 check_eligibility)를 호출하여 답변을 보강합니다.
 3.  **태도:** 친절하고 전문적인 존댓말을 사용하며, 복잡한 세법 내용을 이해하기 쉽게 풀어서 설명합니다.
 4.  **제한:** 최종적인 세무 신고는 세무사 또는 국세청 자료를 통해 확인하도록 반드시 권고합니다."""
 
@@ -141,9 +188,9 @@ SYSTEM_PROMPT = """당신은 '연말정산 절세 코치'입니다. 당신의 �
 
 QUICK_TIPS = {
     "의료비 공제 팁": "의료비 공제를 최대한 많이 받는 방법이 궁금해",
-    "교육비 공제 요건": "자녀 교육비 공제는 어디까지 받을 수 있어?",
+    "소득 기준 확인": "제 연봉이 7500만원인데 주택자금 공제가 가능한가요?",
     "연금저축 팁": "연금저축 공제 한도와 팁을 알려줘",
-    "주택자금 팁": "무주택자 주택자금 공제는 어떻게 해야 해?"
+    "신용카드 공제 기준": "신용카드 공제 소득 기준이 궁금합니다."
 }
 
 st.markdown('<div class="quick-tip-container">', unsafe_allow_html=True)
@@ -151,32 +198,26 @@ st.markdown("##### 💡 자주 찾는 공제 팁")
 
 cols = st.columns(len(QUICK_TIPS))
 
-# 버튼을 누르면 해당 질문을 session_state에 저장하고 앱을 재실행합니다.
 for i, (label, query) in enumerate(QUICK_TIPS.items()):
     with cols[i]:
         if st.button(label, key=f"tip_button_{i}"):
             st.session_state.button_prompt = query
-            # st.rerun() 대신 st.experimental_rerun()을 사용하거나, st.rerun()을 사용하려면 Python 버전에 따라 조정이 필요할 수 있습니다.
             st.rerun() 
 
 st.markdown('</div>', unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# 5. 사용자 입력 처리 및 API 호출 (입력창 유지 로직 적용)
+# 5. 사용자 입력 처리 및 API 호출 (로딩 스피너 적용)
 # -------------------------------------------------------------
 
-# 1. st.chat_input()은 무조건 호출되어 입력창을 렌더링해야 합니다.
 chat_input_val = st.chat_input("무엇을 도와드릴까요? (예: 의료비 공제 팁 알려줘)")
 
 final_prompt = None
 
-# 2. 버튼 클릭 값이 있는지 확인 (버튼이 최우선 순위)
 if "button_prompt" in st.session_state and st.session_state.button_prompt:
     final_prompt = st.session_state.button_prompt
-    # 버튼 prompt를 사용한 후 세션 상태에서 지웁니다.
     st.session_state.button_prompt = ""
 elif chat_input_val:
-    # 2. 채팅 입력 값이 있는지 확인
     final_prompt = chat_input_val
 
 # 3. 최종 prompt가 있을 때만 API 호출 로직 실행
@@ -193,56 +234,56 @@ if final_prompt:
     # 2. API 요청 메시지 리스트 구성
     with st.chat_message("assistant"):
         placeholder = st.empty()
-
-        # 시스템 메시지 추가
-        messages_for_completion = [{"role": "system", "content": SYSTEM_PROMPT}]
         
-        # 기존 세션 기록 추가
-        messages_for_completion.extend(st.session_state.messages)
-        
-        # -------------------------------------------------------------------
-        # 3. API 호출 및 도구 사용 로직
-        # -------------------------------------------------------------------
-        response = client.chat.completions.create( 
-            model=deployment_name, 
-            messages=messages_for_completion,
-            tools=tools_definitions,
-            tool_choice="auto",
-        )
-        
-        response_message = response.choices[0].message
-        assistant_reply = ""
-
-        # 도구 호출이 필요한 경우 (1차 호출)
-        if response_message.tool_calls:
+        # --- 로딩 스피너 추가 ---
+        with st.spinner("전문가 AI가 답변을 분석하고 있습니다..."):
             
-            messages_for_completion.append(response_message)
+            messages_for_completion = [{"role": "system", "content": SYSTEM_PROMPT}]
+            messages_for_completion.extend(st.session_state.messages)
             
-            for tool_call in response_message.tool_calls:
-                function_name = tool_call.function.name
-                function_args = json.loads(tool_call.function.arguments)
-
-                function_response = available_functions[function_name](**function_args)
-
-                messages_for_completion.append({
-                    "tool_call_id": tool_call.id,
-                    "role": "tool",
-                    "name": function_name,
-                    "content": function_response,
-                })
-            
-            # 2차 호출: 도구 결과를 바탕으로 최종 답변 생성
-            final_response = client.chat.completions.create(
-                model=deployment_name,
+            # -------------------------------------------------------------------
+            # 3. API 호출 및 도구 사용 로직
+            # -------------------------------------------------------------------
+            response = client.chat.completions.create( 
+                model=deployment_name, 
                 messages=messages_for_completion,
+                tools=tools_definitions,
+                tool_choice="auto",
             )
-            assistant_reply = final_response.choices[0].message.content
+            
+            response_message = response.choices[0].message
+            assistant_reply = ""
 
-        # 도구 호출이 필요 없거나 2차 호출 결과가 나온 경우
-        else:
-            assistant_reply = response_message.content
+            # 도구 호출이 필요한 경우 (1차 호출)
+            if response_message.tool_calls:
+                
+                messages_for_completion.append(response_message)
+                
+                for tool_call in response_message.tool_calls:
+                    function_name = tool_call.function.name
+                    function_args = json.loads(tool_call.function.arguments)
+
+                    # 실제 Python 함수 실행
+                    function_response = available_functions[function_name](**function_args)
+
+                    messages_for_completion.append({
+                        "tool_call_id": tool_call.id,
+                        "role": "tool",
+                        "name": function_name,
+                        "content": function_response,
+                    })
+                
+                # 2차 호출: 도구 결과를 바탕으로 최종 답변 생성
+                final_response = client.chat.completions.create(
+                    model=deployment_name,
+                    messages=messages_for_completion,
+                )
+                assistant_reply = final_response.choices[0].message.content
+
+            # 도구 호출이 필요 없거나 2차 호출 결과가 나온 경우
+            else:
+                assistant_reply = response_message.content
 
         # 4. AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
-
