@@ -4,14 +4,23 @@ import json
 import requests
 from openai import AzureOpenAI
 from dotenv import load_dotenv
-from datetime import datetime, timedelta, timezone # 시간 계산을 위해 추가
+from datetime import datetime, timedelta, timezone 
 import warnings
-import base64
+import base64 
 
 # 1. 환경 변수 로드 (.env 파일이 같은 폴더에 있어야 함)
 load_dotenv()
 
+# OPENWEATHER_API_KEY는 더 이상 사용되지 않지만, 기존 변수는 유지
+OPENWEATHER_API_KEY = "586cc15ec5c2aabe7f9cd119ed9ca9e4" 
+deployment_name = "gpt-4o-mini" 
+
+# -------------------------------------------------------------
+# 2. 연말정산 도구 함수 및 정의 (이전과 동일)
+# -------------------------------------------------------------
+
 def get_tax_tip_for_category(category):
+    """주요 연말정산 공제 항목에 대한 절세 팁을 제공하는 헬퍼 함수"""
     tips = {
         "insurance": "보장성 보험료는 연 100만 원 한도로 12% 세액 공제됩니다. 맞벌이 부부의 경우, 급여가 적은 배우자 명의로 계약하는 것이 유리할 수 있습니다.",
         "medical": "총 급여액의 3%를 초과하는 금액에 대해 공제됩니다. 특히 산후조리원 비용(200만 원 한도)과 난임 시술비는 공제율이 높으니 관련 영수증을 잘 챙기세요.",
@@ -19,103 +28,16 @@ def get_tax_tip_for_category(category):
         "housing": "주택 마련 저축(청약 저축 등)은 연 240만 원 한도로 공제됩니다. 무주택 세대주 여부를 반드시 확인해야 합니다.",
         "pension": "연금저축 및 퇴직연금은 세액 공제율이 높습니다. 총 급여액에 따라 공제 한도와 공제율이 달라지니 최대한 활용하는 것이 좋습니다."
     }
-    
     selected_tip = tips.get(category.lower(), "해당 공제 항목에 대한 일반적인 절세 팁을 찾을 수 없습니다. (카테고리: " + category + ")")
-    
-    return json.dumps({
-        "category": category,
-        "tip": selected_tip
-    })
+    return json.dumps({"category": category, "tip": selected_tip})
 
-OPENWEATHER_API_KEY = "586cc15ec5c2aabe7f9cd119ed9ca9e4"
-deployment_name = "gpt-4o-mini" # 사용하는 모델 배포명
-
-def get_location_data(location):
-    """OpenWeatherMap API를 통해 날씨와 타임존 오프셋 정보를 가져오는 헬퍼 함수"""
-    if not OPENWEATHER_API_KEY:
-        return None
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={OPENWEATHER_API_KEY}&units=metric"
-    try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            # 404 오류 등을 모델에게 간결하게 전달
-            return json.dumps({"error": f"API Error: {response.status_code}"})
-    except Exception as e:
-        return json.dumps({"error": f"Request failed: {e}"})
-
-def get_current_weather(location, unit="celsius"):
-    """실제 API를 호출하여 날씨 정보를 반환"""
-    data = get_location_data(location)
-    if data and "error" not in data:
-        temp_c = data["main"]["temp"]
-        weather_desc = data["weather"][0]["description"]
-        final_temp = temp_c
-        if unit == "fahrenheit":
-            final_temp = (temp_c * 9/5) + 32
-
-        return json.dumps({
-            "location": location,
-            "temperature": round(final_temp, 1),
-            "unit": unit,
-            "description": weather_desc
-        })
-    return json.dumps({"location": location, "temperature": "unknown"})
-
-def get_current_time(location):
-    """실제 API를 호출하여 날씨 정보를 반환"""
-    data = get_location_data(location)
-    if data and "error" not in data:
-        temp_c = data["main"]["temp"]
-        weather_desc = data["weather"][0]["description"]
-        final_temp = temp_c
-        if unit == "fahrenheit":
-            final_temp = (temp_c * 9/5) + 32
-
-        return json.dumps({
-            "location": location,
-            "temperature": round(final_temp, 1),
-            "unit": unit,
-            "description": weather_desc
-        })
-    return json.dumps({"location": location, "temperature": "unknown"})
 
 tools_definitions = [
     {
         "type": "function",
         "function": {
-            "name": "get_current_weather",
-            "description": "지역의 현재 날씨(온도, 상태)를 조회합니다. 도시 이름은 반드시 영어로 변환하여 사용하세요.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {"type": "string", "description": "The city name, e.g. Seoul or Tokyo."},
-                    "unit": {"type": "string", "enum": ["celsius", "fahrenheit"], "description": "Temperature unit."},
-                },
-                "required": ["location"],
-            },
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_current_time",
-            "description": "지역의 현재 현지 시간을 조회합니다. 도시 이름은 반드시 영어로 변환하여 사용하세요.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {"type": "string", "description": "The city name, e.g. Seoul or Tokyo."},
-                },
-                "required": ["location"],
-            },
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "get_tax_tip_for_category",
-            "description": "사용자가 질문한 연말정산 공제 항목(예: 보험료, 의료비, 교육비 등)에 대한 구체적인 절세 팁과 공제 요건을 조회합니다. 카테고리는 반드시 영어로 변환하여 사용해야 합니다.",
+            "description": "사용자가 질문한 연말정산 공제 항목(예: 보험료, 의료비, 교육비 등)에 대한 구체적인 절세 팁과 공제 요건을 조회합니다. 카테고리는 반드시 영어로 변환하여 사용하세요.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -127,15 +49,15 @@ tools_definitions = [
     }
 ]
 
-# 도구 이름과 실제 Python 함수를 매핑
 available_functions = {
-    "get_current_weather": get_current_weather,
-    "get_current_time": get_current_time,
-    "get_tax_tip_for_category": get_tax_tip_for_category
+    "get_tax_tip_for_category": get_tax_tip_for_category,
 }
 
-# 2. Azure OpenAI 클라이언트 설정
-# (실제 값은 .env 파일이나 여기에 직접 입력하세요)
+# -------------------------------------------------------------
+# 3. Streamlit UI 및 챗봇 로직
+# -------------------------------------------------------------
+
+# Azure OpenAI 클라이언트 설정
 st.title("💰 연말정산 공제 팁 챗봇")
 
 client = AzureOpenAI(
@@ -144,16 +66,20 @@ client = AzureOpenAI(
     azure_endpoint=os.getenv("AZURE_OAI_ENDPOINT")
 )
 
-# 3. 대화기록(Session State) 초기화 - 이게 없으면 새로고침 때마다 대화가 날아갑니다!
+# 대화기록(Session State) 초기화
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 4. 화면에 기존 대화 내용 출력
+# 화면에 기존 대화 내용 출력
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
+        # 세션에 저장된 문자열 메시지만 출력
         st.markdown(message["content"])
 
+# -------------------------------------------------------------
+# 파일 업로더를 입력 바 위에 배치
 uploaded_file = st.file_uploader("연말정산 서류(PDF, PNG, JPG)를 여기에 첨부하세요.", type=["pdf", "png", "jpg", "jpeg"], key="tax_doc_uploader")
+# -------------------------------------------------------------
 
 # 시스템 프롬프트 정의
 SYSTEM_PROMPT = """당신은 '연말정산 절세 코치'입니다. 당신의 목표는 사용자가 합법적으로 세액 공제나 소득 공제를 최대한 많이 받을 수 있도록 구체적이고 실용적인 팁과 요건을 안내하는 것입니다.
@@ -168,31 +94,29 @@ SYSTEM_PROMPT = """당신은 '연말정산 절세 코치'입니다. 당신의 �
 # 사용자 입력 받기
 if prompt := st.chat_input("무엇을 도와드릴까요?"):
     
-    # (1) 사용자 메시지 구성 (파일 + 텍스트)
+    # -------------------------------------------------------------------
+    # 1. 현재 사용자 메시지 구성 (UI 표시 및 API 전송용)
+    # -------------------------------------------------------------------
     with st.chat_message("user"):
-        # 텍스트는 먼저 표시
+        # UI에 텍스트 표시
         st.markdown(prompt)
         
-        user_message_content = []
+        # API 전송용 멀티모달 메시지 리스트 생성 (BadRequestError 방지 핵심)
+        current_api_user_content = []
         
         # 파일 첨부 처리 및 Base64 인코딩
         if uploaded_file is not None:
             try:
-                # 파일 읽기 및 Base64 인코딩
                 file_bytes = uploaded_file.read()
                 encoded_file = base64.b64encode(file_bytes).decode('utf-8')
-                
-                # MIME 타입 설정: 파일의 실제 MIME 타입을 그대로 사용합니다.
-                # PDF일 경우 'application/pdf', 이미지일 경우 'image/png' 등이 됩니다.
                 mime_type = uploaded_file.type 
                 
-                # 첨부된 파일 메시지 구성 (GPT-4o는 이 구조로 PDF 파일도 처리할 수 있습니다.)
-                user_message_content.append({
-                    # API 구조상 파일 데이터를 담을 때는 image_url 타입을 사용합니다.
+                # 파일 데이터를 API 요청 리스트에 추가
+                current_api_user_content.append({
                     "type": "image_url",
                     "image_url": {
                         "url": f"data:{mime_type};base64,{encoded_file}",
-                        "detail": "high" # 고화질 분석 요청
+                        "detail": "high"
                     }
                 })
                 
@@ -200,38 +124,40 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
                 
             except Exception as e:
                 st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
-                user_message_content = []
-                
-        # 기존 사용자 텍스트 프롬프트를 복합 메시지에 추가
-        user_message_content.append({
-            "type": "text",
-            "text": prompt
-        })
+                # 오류 발생 시 파일 없이 텍스트만 보내도록 처리
+                current_api_user_content = []
+
+        # 텍스트 프롬프트를 API 요청 리스트에 추가
+        current_api_user_content.append({"type": "text", "text": prompt})
         
-    # (2) AI 응답 생성
+    # -------------------------------------------------------------------
+    # 2. API 요청 메시지 리스트 구성
+    # -------------------------------------------------------------------
     with st.chat_message("assistant"):
         placeholder = st.empty()
 
-        # 메시지 리스트 생성
+        # 시스템 메시지 추가
         messages_for_completion = [{"role": "system", "content": SYSTEM_PROMPT}]
         
-        # 기존 세션 기록 추가
+        # 기존 세션 기록 추가 (이 메시지들은 텍스트 문자열만 포함해야 함!)
         messages_for_completion.extend([
             {"role": m["role"], "content": m["content"]}
             for m in st.session_state.messages
         ])
         
-        # 현재 사용자의 복합 메시지 추가
-        # 파일이 첨부되지 않았어도 content는 텍스트를 담은 리스트입니다.
+        # 현재 사용자의 최종 API 요청 메시지 추가 (멀티모달 리스트)
         messages_for_completion.append({
             "role": "user",
-            "content": user_message_content
+            "content": current_api_user_content
         })
         
-        # 현재 사용자 메시지는 세션 상태에 문자열로 저장 (화면 표시용)
+        # **오류 방지 핵심:** 세션 상태에는 순수한 텍스트 문자열만 저장
         st.session_state.messages.append({"role": "user", "content": prompt})
 
 
+        # -------------------------------------------------------------------
+        # 3. API 호출 및 도구 사용 로직 (이전과 동일)
+        # -------------------------------------------------------------------
         response = client.chat.completions.create(
             model=deployment_name, 
             messages=messages_for_completion,
@@ -244,17 +170,15 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
 
         # 도구 호출이 필요한 경우 (1차 호출)
         if response_message.tool_calls:
-            # 1차 응답 메시지 추가
+            # 1차 응답 메시지 추가 (API 재호출용)
             messages_for_completion.append(response_message)
             
             for tool_call in response_message.tool_calls:
                 function_name = tool_call.function.name
                 function_args = json.loads(tool_call.function.arguments)
 
-                # Python 함수 실행
                 function_response = available_functions[function_name](**function_args)
 
-                # 결과 메시지 추가 (2차 호출 시 모델에게 전달)
                 messages_for_completion.append({
                     "tool_call_id": tool_call.id,
                     "role": "tool",
@@ -273,9 +197,10 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         else:
             assistant_reply = response_message.content
 
-        # (3) AI 응답 화면에 출력 및 저장
+        # (4) AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
 
 
