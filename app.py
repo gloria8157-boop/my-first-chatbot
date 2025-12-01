@@ -6,6 +6,7 @@ from openai import AzureOpenAI
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone # 시간 계산을 위해 추가
 import warnings
+import base64
 
 # 1. 환경 변수 로드 (.env 파일이 같은 폴더에 있어야 함)
 load_dotenv()
@@ -154,53 +155,98 @@ for message in st.session_state.messages:
 
 uploaded_file = st.file_uploader("연말정산 서류(PDF, PNG, JPG)를 여기에 첨부하세요.", type=["pdf", "png", "jpg", "jpeg"], key="tax_doc_uploader")
 
-# 5. 사용자 입력 받기
-if prompt := st.chat_input("무엇을 도와드릴까요?"):
-    # (1) 사용자 메시지 화면에 표시 & 저장
-    st.chat_message("user").markdown(prompt)
-    st.session_state.messages.append({"role": "user", "content": prompt})
-
-    # (2) AI 응답 생성 (스트리밍 방식 아님, 단순 호출 예시)
-    with st.chat_message("assistant"):
-        # 응답 영역 Placeholder
-        placeholder = st.empty()
-        # 'if prompt := st.chat_input("무엇을 도와드릴까요?"):` 블록 안
-# 'with st.chat_message("assistant"):' 블록 안에 위치해야 합니다.
-
-        # 응답 영역 Placeholder
-        placeholder = st.empty()
-
-        # Streamlit 세션 기록을 기반으로 메시지 리스트 생성 (시스템 지침 포함)
-        # [수정] 시스템 메시지를 맨 앞에 추가하여 챗봇의 페르소나를 연말정산 전문가로 정의합니다.
-        messages_for_completion = [{
-            "role": "system",
-            "content": """당신은 '연말정산 절세 코치'라는 이름의 챗봇입니다. 당신의 목표는 사용자가 합법적으로 세액 공제나 소득 공제를 최대한 많이 받을 수 있도록 구체적이고 실용적인 팁과 요건을 안내하는 것입니다.
+# 시스템 프롬프트 정의
+SYSTEM_PROMPT = """당신은 '연말정산 절세 코치'입니다. 당신의 목표는 사용자가 합법적으로 세액 공제나 소득 공제를 최대한 많이 받을 수 있도록 구체적이고 실용적인 팁과 요건을 안내하는 것입니다.
 
 1.  **역할:** 연말정산 항목(의료비, 보험료, 교육비, 주택자금 등)과 관련된 질문에 답변하고, 공제를 더 받을 수 있는 방법을 상세히 설명합니다.
-2.  **태도:** 친절하고 전문적인 존댓말을 사용하며, 복잡한 세법 내용을 이해하기 쉽게 풀어서 설명합니다.
-3.  **도구 사용:** 사용자가 특정 공제 항목에 대해 질문하면 'get_tax_tip_for_category' 도구를 호출하여 맞춤형 팁을 조회한 후, 이를 바탕으로 상세한 답변을 구성합니다.
-4.  **제한:** 최종적인 세무 신고는 세무사 또는 국세청 자료를 통해 확인하도록 반드시 권고합니다.
-"""
-        }] + [
+2.  **서류 분석:** 사용자가 연말정산 서류(이미지/PDF)를 첨부하면, 그 서류를 **텍스트 질문과 함께 종합적으로 분석**하여 공제 항목별 누락된 부분이나 더 보충할 수 있는 부분을 찾아 구체적인 절세 팁을 제공합니다.
+3.  **도구 사용:** 특정 공제 항목에 대한 일반적인 팁을 질문하거나 답변을 보강할 때 'get_tax_tip_for_category' 도구를 호출하여 맞춤형 팁을 조회합니다.
+4.  **태도:** 친절하고 전문적인 존댓말을 사용하며, 복잡한 세법 내용을 이해하기 쉽게 풀어서 설명합니다.
+5.  **제한:** 최종적인 세무 신고는 세무사 또는 국세청 자료를 통해 확인하도록 반드시 권고합니다."""
+
+
+# 사용자 입력 받기
+if prompt := st.chat_input("무엇을 도와드릴까요?"):
+    
+    # (1) 사용자 메시지 구성 (파일 + 텍스트)
+    with st.chat_message("user"):
+        # 텍스트는 먼저 표시
+        st.markdown(prompt)
+        
+        user_message_content = []
+        
+        # 파일 첨부 처리 및 Base64 인코딩
+        if uploaded_file is not None:
+            try:
+                # 파일 읽기 및 Base64 인코딩
+                file_bytes = uploaded_file.read()
+                encoded_file = base64.b64encode(file_bytes).decode('utf-8')
+                
+                # MIME 타입 설정: 파일의 실제 MIME 타입을 그대로 사용합니다.
+                # PDF일 경우 'application/pdf', 이미지일 경우 'image/png' 등이 됩니다.
+                mime_type = uploaded_file.type 
+                
+                # 첨부된 파일 메시지 구성 (GPT-4o는 이 구조로 PDF 파일도 처리할 수 있습니다.)
+                user_message_content.append({
+                    # API 구조상 파일 데이터를 담을 때는 image_url 타입을 사용합니다.
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{mime_type};base64,{encoded_file}",
+                        "detail": "high" # 고화질 분석 요청
+                    }
+                })
+                
+                st.info(f"첨부된 파일({uploaded_file.name}, 타입: {mime_type})을 분석 요청에 포함했습니다.")
+                
+            except Exception as e:
+                st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+                user_message_content = []
+                
+        # 기존 사용자 텍스트 프롬프트를 복합 메시지에 추가
+        user_message_content.append({
+            "type": "text",
+            "text": prompt
+        })
+        
+    # (2) AI 응답 생성
+    with st.chat_message("assistant"):
+        placeholder = st.empty()
+
+        # 메시지 리스트 생성
+        messages_for_completion = [{"role": "system", "content": SYSTEM_PROMPT}]
+        
+        # 기존 세션 기록 추가
+        messages_for_completion.extend([
             {"role": m["role"], "content": m["content"]}
             for m in st.session_state.messages
-        ]
+        ])
+        
+        # 현재 사용자의 복합 메시지 추가
+        # 파일이 첨부되지 않았어도 content는 텍스트를 담은 리스트입니다.
+        messages_for_completion.append({
+            "role": "user",
+            "content": user_message_content
+        })
+        
+        # 현재 사용자 메시지는 세션 상태에 문자열로 저장 (화면 표시용)
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
 
         response = client.chat.completions.create(
-                model=deployment_name, 
-                messages=messages_for_completion,
-                tools=tools_definitions,
-                tool_choice="auto",
-            )
+            model=deployment_name, 
+            messages=messages_for_completion,
+            tools=tools_definitions,
+            tool_choice="auto",
+        )
 
         response_message = response.choices[0].message
-        messages_for_completion.append(response_message)
-
         assistant_reply = ""
 
-            # 도구 호출이 필요한 경우
+        # 도구 호출이 필요한 경우 (1차 호출)
         if response_message.tool_calls:
-
+            # 1차 응답 메시지 추가
+            messages_for_completion.append(response_message)
+            
             for tool_call in response_message.tool_calls:
                 function_name = tool_call.function.name
                 function_args = json.loads(tool_call.function.arguments)
@@ -208,7 +254,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
                 # Python 함수 실행
                 function_response = available_functions[function_name](**function_args)
 
-                # 결과 메시지 추가 (이 결과가 2차 호출 시 모델에게 전달됨)
+                # 결과 메시지 추가 (2차 호출 시 모델에게 전달)
                 messages_for_completion.append({
                     "tool_call_id": tool_call.id,
                     "role": "tool",
