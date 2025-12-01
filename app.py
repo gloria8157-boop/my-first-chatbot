@@ -149,11 +149,20 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # 시스템 메시지 추가
         messages_for_completion = [{"role": "system", "content": SYSTEM_PROMPT}]
         
-        # 기존 세션 기록 추가 (여기가 핵심: 과거 메시지는 무조건 문자열 콘텐츠로 처리)
-        messages_for_completion.extend([
-            {"role": m["role"], "content": str(m["content"])} # <-- str() 강제 변환
-            for m in st.session_state.messages[:-1] 
-        ])
+        # 기존 세션 기록 추가: 안전한 history 처리
+        # 1. 방금 추가된 현재 메시지(마지막 요소)는 제외합니다: [:-1]
+        # 2. 모든 content를 str()로 감싸고, None 값은 빈 문자열로 처리하여 API 오류를 방지합니다.
+        safe_history = []
+        for m in st.session_state.messages[:-1]:
+            content = m.get("content")
+            # content가 None이거나 비어있으면 건너뛰어 API에 유효하지 않은 메시지를 보내지 않도록 방어합니다.
+            if content is not None and str(content).strip() != "":
+                safe_history.append({
+                    "role": m["role"],
+                    "content": str(content) 
+                })
+        
+        messages_for_completion.extend(safe_history)
         
         # 현재 사용자의 최종 API 요청 메시지 추가 (멀티모달 리스트)
         messages_for_completion.append({
@@ -161,10 +170,11 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
             "content": current_api_user_content
         })
 
+
         # -------------------------------------------------------------------
-        # 3. API 호출 및 도구 사용 로직 (Line 170이 여기서 시작됩니다.)
+        # 3. API 호출 및 도구 사용 로직 (Line 167이 여기서 시작됩니다.)
         # -------------------------------------------------------------------
-        response = client.chat.completions.create( 
+        response = client.chat.completions.create(
             model=deployment_name, 
             messages=messages_for_completion,
             tools=tools_definitions,
@@ -206,6 +216,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # (4) AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
 
 
