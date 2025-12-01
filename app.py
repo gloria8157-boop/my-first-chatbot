@@ -66,20 +66,6 @@ def get_current_time(location):
         })
     return json.dumps({"location": location, "temperature": "unknown"})
 
-def get_current_time(location):
-    """실제 API의 Timezone offset을 이용하여 현지 시간 계산"""
-    data = get_location_data(location)
-    if data and "error" not in data:
-        timezone_offset = data["timezone"]
-        utc_now = datetime.now(timezone.utc)
-        local_time = utc_now + timedelta(seconds=timezone_offset)
-
-        return json.dumps({
-            "location": location,
-            "current_time": local_time.strftime("%Y-%m-%d %I:%M %p")
-        })
-    return json.dumps({"location": location, "current_time": "unknown"})
-
 tools_definitions = [
     {
         "type": "function",
@@ -198,5 +184,6 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # (3) AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
 
