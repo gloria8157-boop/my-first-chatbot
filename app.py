@@ -110,7 +110,7 @@ available_functions = {
 # -------------------------------------------------------------
 # 3. Streamlit UI 및 클라이언트 설정
 # -------------------------------------------------------------
-st.title("💰 연말정산 공제 팁 챗봇")
+st.title("💰 연말정산 공제 팁 챗봇 (텍스트 전용)")
 
 client = AzureOpenAI(
     api_key=os.getenv("AZURE_OAI_KEY"),
@@ -136,10 +136,9 @@ SYSTEM_PROMPT = """당신은 '연말정산 절세 코치'입니다. 당신의 �
 
 
 # -------------------------------------------------------------
-# 4. 퀵팁 버튼 UI 생성 및 처리 로직 (새로 추가된 부분)
+# 4. 퀵팁 버튼 UI 생성 및 처리 로직
 # -------------------------------------------------------------
 
-# Quick Tip 버튼에 대한 쿼리 정의
 QUICK_TIPS = {
     "의료비 공제 팁": "의료비 공제를 최대한 많이 받는 방법이 궁금해",
     "교육비 공제 요건": "자녀 교육비 공제는 어디까지 받을 수 있어?",
@@ -157,26 +156,32 @@ for i, (label, query) in enumerate(QUICK_TIPS.items()):
     with cols[i]:
         if st.button(label, key=f"tip_button_{i}"):
             st.session_state.button_prompt = query
-            st.rerun()
+            # st.rerun() 대신 st.experimental_rerun()을 사용하거나, st.rerun()을 사용하려면 Python 버전에 따라 조정이 필요할 수 있습니다.
+            st.rerun() 
 
 st.markdown('</div>', unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# 5. 사용자 입력 처리 및 API 호출 (버튼 클릭 처리 포함)
+# 5. 사용자 입력 처리 및 API 호출 (입력창 유지 로직 적용)
 # -------------------------------------------------------------
 
-# 버튼이 눌렸다면, 해당 쿼리를 prompt로 사용합니다.
+# 1. st.chat_input()은 무조건 호출되어 입력창을 렌더링해야 합니다.
+chat_input_val = st.chat_input("무엇을 도와드릴까요? (예: 의료비 공제 팁 알려줘)")
+
+final_prompt = None
+
+# 2. 버튼 클릭 값이 있는지 확인 (버튼이 최우선 순위)
 if "button_prompt" in st.session_state and st.session_state.button_prompt:
-    prompt = st.session_state.button_prompt
+    final_prompt = st.session_state.button_prompt
     # 버튼 prompt를 사용한 후 세션 상태에서 지웁니다.
     st.session_state.button_prompt = ""
-else:
-    # 일반 채팅 입력으로 넘어갑니다.
-    prompt = st.chat_input("무엇을 도와드릴까요? (예: 의료비 공제 팁 알려줘)")
+elif chat_input_val:
+    # 2. 채팅 입력 값이 있는지 확인
+    final_prompt = chat_input_val
 
-
-# API 호출 로직은 prompt가 있을 때만 실행됩니다.
-if prompt:
+# 3. 최종 prompt가 있을 때만 API 호출 로직 실행
+if final_prompt:
+    prompt = final_prompt
     
     # 1. 사용자 메시지 화면 표시 및 세션 저장
     with st.chat_message("user"):
@@ -240,4 +245,3 @@ if prompt:
         # 4. AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
-
