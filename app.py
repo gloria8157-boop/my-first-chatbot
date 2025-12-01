@@ -18,7 +18,7 @@ client = AzureOpenAI(
 )
 
 # Assistant ID는 미리 생성하여 환경 변수 등에 저장해야 합니다.
-ASSISTANT_ID = os.getenv("AZURE_ASSISTANT_ID") 
+ASSISTANT_ID = "gpt-4o-mini" 
 
 # Streamlit 세션 상태 초기화
 if "thread_id" not in st.session_state:
@@ -147,4 +147,5 @@ if prompt := st.chat_input("서류에 대한 질문이나 분석 요청을 입�
         # 5. 응답 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
