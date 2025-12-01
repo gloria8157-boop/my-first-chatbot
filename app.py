@@ -116,11 +116,11 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # 파일 첨부 처리 및 Base64 인코딩
         if uploaded_file is not None:
             try:
+                # ... (중략: 파일 처리 로직) ...
                 file_bytes = uploaded_file.read()
                 encoded_file = base64.b64encode(file_bytes).decode('utf-8')
                 mime_type = uploaded_file.type 
                 
-                # 파일 데이터를 API 요청 리스트에 추가
                 current_api_user_content.append({
                     "type": "image_url",
                     "image_url": {
@@ -128,7 +128,6 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
                         "detail": "high"
                     }
                 })
-                
                 st.info(f"첨부된 파일({uploaded_file.name}, 타입: {mime_type})을 분석 요청에 포함했습니다.")
                 
             except Exception as e:
@@ -138,7 +137,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # 텍스트 프롬프트를 API 요청 리스트에 추가
         current_api_user_content.append({"type": "text", "text": prompt})
         
-    # **오류 방지 핵심:** 세션 상태에는 순수한 텍스트 문자열만 저장 (나중에 history로 쓰기 위함)
+    # **오류 방지 핵심:** 세션 상태에는 순수한 텍스트 문자열만 저장
     st.session_state.messages.append({"role": "user", "content": prompt})
 
 
@@ -154,7 +153,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # 기존 세션 기록 추가 (텍스트 메시지 히스토리)
         messages_for_completion.extend([
             {"role": m["role"], "content": m["content"]}
-            for m in st.session_state.messages[:-1] # 방금 추가된 현재 메시지는 제외하고 history에 포함
+            for m in st.session_state.messages[:-1] 
         ])
         
         # 현재 사용자의 최종 API 요청 메시지 추가 (멀티모달 리스트)
@@ -165,9 +164,9 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
 
 
         # -------------------------------------------------------------------
-        # 3. API 호출 및 도구 사용 로직
+        # 3. API 호출 및 도구 사용 로직 (Line 170이 여기서 시작됩니다.)
         # -------------------------------------------------------------------
-        response = client.chat.completions.create(
+        response = client.chat.completions.create( 
             model=deployment_name, 
             messages=messages_for_completion,
             tools=tools_definitions,
@@ -209,4 +208,5 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # (4) AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
