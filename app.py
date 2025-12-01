@@ -105,16 +105,18 @@ SYSTEM_PROMPT = """당신은 '연말정산 절세 코치'입니다. 당신의 �
 # -------------------------------------------------------------
 if prompt := st.chat_input("무엇을 도와드릴까요?"):
     
-    # 1. 현재 사용자 메시지 구성 (API 전송용)
+    # 1. 현재 사용자 메시지 구성 (UI 표시 및 API 전송용)
     with st.chat_message("user"):
+        # UI에 텍스트 표시
         st.markdown(prompt)
         
-        # API 전송용 멀티모달 메시지 리스트 생성: 항상 리스트로 시작합니다.
-        current_api_user_content = [] 
+        # API 전송용 멀티모달 메시지 리스트 생성: 항상 리스트로 시작
+        current_api_user_content = []
         
         # 파일 첨부 처리 및 Base64 인코딩
         if uploaded_file is not None:
             try:
+                # ... (중략: 파일 처리 로직) ...
                 file_bytes = uploaded_file.read()
                 encoded_file = base64.b64encode(file_bytes).decode('utf-8')
                 mime_type = uploaded_file.type 
@@ -130,13 +132,13 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
                 st.info(f"첨부된 파일({uploaded_file.name}, 타입: {mime_type})을 분석 요청에 포함했습니다.")
                 
             except Exception as e:
-                # 파일 오류 시, current_api_user_content는 [] 빈 리스트로 유지됨
-                st.error(f"파일 처리 중 오류가 발생했습니다: {e}") 
+                st.error(f"파일 처리 중 오류가 발생했습니다: {e}")
+                current_api_user_content = []
 
-        # 텍스트 프롬프트를 API 요청 리스트에 추가 (파일이 없어도 텍스트는 전달됨)
+        # 텍스트 프롬프트를 API 요청 리스트에 추가
         current_api_user_content.append({"type": "text", "text": prompt})
         
-    # **오류 방지 핵심:** 세션 상태에는 순수한 텍스트 문자열만 저장
+    # **오류 방지 핵심 1:** 세션 상태에는 순수한 텍스트 문자열만 저장
     st.session_state.messages.append({"role": "user", "content": prompt})
 
 
@@ -149,17 +151,15 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # 시스템 메시지 추가
         messages_for_completion = [{"role": "system", "content": SYSTEM_PROMPT}]
         
-        # 기존 세션 기록 추가: 안전한 history 처리
-        # 1. 방금 추가된 현재 메시지(마지막 요소)는 제외합니다: [:-1]
-        # 2. 모든 content를 str()로 감싸고, None 값은 빈 문자열로 처리하여 API 오류를 방지합니다.
+        # **오류 방지 핵심 2:** 기존 세션 기록 추가 (안전 필터링)
+        # 과거 메시지 중 content가 문자열이 아닌 경우는 API에 전달하지 않도록 엄격히 필터링합니다.
         safe_history = []
         for m in st.session_state.messages[:-1]:
-            content = m.get("content")
-            # content가 None이거나 비어있으면 건너뛰어 API에 유효하지 않은 메시지를 보내지 않도록 방어합니다.
-            if content is not None and str(content).strip() != "":
+            # 과거 메시지는 반드시 단일 문자열 content를 가져야 함
+            if m.get("content") is not None and isinstance(m["content"], str):
                 safe_history.append({
                     "role": m["role"],
-                    "content": str(content) 
+                    "content": m["content"]
                 })
         
         messages_for_completion.extend(safe_history)
@@ -172,9 +172,9 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
 
 
         # -------------------------------------------------------------------
-        # 3. API 호출 및 도구 사용 로직 (Line 167이 여기서 시작됩니다.)
+        # 3. API 호출 및 도구 사용 로직 (Line 177이 여기서 시작됩니다.)
         # -------------------------------------------------------------------
-        response = client.chat.completions.create(
+        response = client.chat.completions.create( 
             model=deployment_name, 
             messages=messages_for_completion,
             tools=tools_definitions,
@@ -216,6 +216,7 @@ if prompt := st.chat_input("무엇을 도와드릴까요?"):
         # (4) AI 응답 화면에 출력 및 저장
         placeholder.markdown(assistant_reply)
         st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
 
 
 
